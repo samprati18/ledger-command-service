@@ -9,13 +9,16 @@ import com.assignment.ledger.entity.command.WalletCommand;
 import com.assignment.ledger.event.EventPublisher;
 import com.assignment.ledger.event.KafkaEventPublisher;
 import com.assignment.ledger.exception.AssetMovementFailedException;
+import com.assignment.ledger.exception.GeneralException;
 import com.assignment.ledger.exception.WalletNotFoundException;
 import com.assignment.ledger.mapper.EntityMapper;
 import com.assignment.ledger.repository.HistoricalBalanceCommandRepository;
 import com.assignment.ledger.repository.MovementCommandRepository;
 import com.assignment.ledger.repository.WalletCommandRepository;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -25,6 +28,7 @@ import java.util.List;
  * The AssetMovementService handles the movement of assets between wallets and related operations.
  */
 @Service
+@Slf4j
 public class AssetMovementService {
     // Repositories for accessing data from the database
     private final MovementCommandRepository movementRepository;
@@ -37,6 +41,16 @@ public class AssetMovementService {
 
     // Mapper for mapping entity objects to DTOs
     private final EntityMapper entityMapper;
+
+    @Value("${ledger.asset.movement.command.topic}")
+    private String movementCommandTopic;
+
+    @Value("${ledger.account.wallet.event.topic}")
+    private String walletEventTopic;
+
+    @Value("${ledger.historical.balance.event.topic}")
+    private String historicalBalanceEventTopic;
+
 
     /**
      * Constructs an instance of AssetMovementService with the necessary dependencies.
@@ -83,49 +97,54 @@ public class AssetMovementService {
                 .orElseThrow(() -> new WalletNotFoundException("Source wallet not found"));
         WalletCommand destinationWallet = walletRepository.findById(destinationWalletId)
                 .orElseThrow(() -> new WalletNotFoundException("Destination wallet not found"));
-        // Determine the state of the movement (Cleared, Pending, or Failed)
-        MovementState state = determineMovementState(sourceWallet, destinationWallet, amount);
-        if (state == MovementState.CLEARED) {
-            // If the movement is cleared, update the wallets, record historical balances, and publish events
-            MovementCommand movementCommand = new MovementCommand();
-            movementCommand.setSourceWallet(sourceWallet);
-            movementCommand.setDestinationWallet(destinationWallet);
-            movementCommand.setAmount(amount);
-            movementCommand.setTimestamp(String.valueOf(LocalDateTime.now()));
-            movementCommand.setState(MovementState.CLEARED);
-            movementRepository.save(movementCommand);
-            // Record historical balances
-            recordHistoricalBalances(sourceWallet, destinationWallet);
-            // Update wallet balances
-            updateWalletBalance(sourceWallet, destinationWallet, amount);
-            // Broadcast balance changes
-            eventPublisher.publishBalanceChangeEvent(sourceWallet);
-            eventPublisher.publishBalanceChangeEvent(destinationWallet);
-            // Broadcast movementCommand
-            eventPublisher.publishMovementEvent(movementCommand);
-            //sync query
-            kafkaEventPublisher.publishCommandEvents("ledger-asset-movementCommand-event", entityMapper.toDTO(movementCommand));
-            kafkaEventPublisher.publishCommandEvents("ledger-account-wallet-event", entityMapper.toDTO(sourceWallet));
-            kafkaEventPublisher.publishCommandEvents("ledger-account-wallet-event", entityMapper.toDTO(destinationWallet));
-        } else if (state == MovementState.FAILED) {
-            // If the movement failed, throw an exception
-            MovementCommand movement = new MovementCommand();
-            movement.setSourceWallet(sourceWallet);
-            movement.setDestinationWallet(destinationWallet);
-            movement.setAmount(amount);
-            movement.setTimestamp(String.valueOf(LocalDateTime.now()));
-            movement.setState(MovementState.FAILED);
-            movementRepository.save(movement);
-            throw new AssetMovementFailedException("Movement failed due to insufficient balance or other error");
-        } else {
-            // If the movement is pending, save the movement command with the PENDING state
-            MovementCommand movement = new MovementCommand();
-            movement.setSourceWallet(sourceWallet);
-            movement.setDestinationWallet(destinationWallet);
-            movement.setAmount(amount);
-            movement.setTimestamp(String.valueOf(LocalDateTime.now()));
-            movement.setState(MovementState.PENDING);
-            movementRepository.save(movement);
+        try {
+            // Determine the state of the movement (Cleared, Pending, or Failed)
+            MovementState state = determineMovementState(sourceWallet, destinationWallet, amount);
+            if (state == MovementState.CLEARED) {
+                // If the movement is cleared, update the wallets, record historical balances, and publish events
+                MovementCommand movementCommand = new MovementCommand();
+                movementCommand.setSourceWallet(sourceWallet);
+                movementCommand.setDestinationWallet(destinationWallet);
+                movementCommand.setAmount(amount);
+                movementCommand.setTimestamp(String.valueOf(LocalDateTime.now()));
+                movementCommand.setState(MovementState.CLEARED);
+                movementRepository.save(movementCommand);
+                // Record historical balances
+                recordHistoricalBalances(sourceWallet, destinationWallet);
+                // Update wallet balances
+                updateWalletBalance(sourceWallet, destinationWallet, amount);
+                // Broadcast balance changes
+                eventPublisher.publishBalanceChangeEvent(sourceWallet);
+                eventPublisher.publishBalanceChangeEvent(destinationWallet);
+                // Broadcast movementCommand
+                eventPublisher.publishMovementEvent(movementCommand);
+                //sync query
+                kafkaEventPublisher.publishCommandEvents(movementCommandTopic, entityMapper.toDTO(movementCommand));
+                kafkaEventPublisher.publishCommandEvents(walletEventTopic, entityMapper.toDTO(sourceWallet));
+                kafkaEventPublisher.publishCommandEvents(walletEventTopic, entityMapper.toDTO(destinationWallet));
+            } else if (state == MovementState.FAILED) {
+                // If the movement failed, throw an exception
+                MovementCommand movement = new MovementCommand();
+                movement.setSourceWallet(sourceWallet);
+                movement.setDestinationWallet(destinationWallet);
+                movement.setAmount(amount);
+                movement.setTimestamp(String.valueOf(LocalDateTime.now()));
+                movement.setState(MovementState.FAILED);
+                movementRepository.save(movement);
+                throw new AssetMovementFailedException("Movement failed due to insufficient balance or other error");
+            } else {
+                // If the movement is pending, save the movement command with the PENDING state
+                MovementCommand movement = new MovementCommand();
+                movement.setSourceWallet(sourceWallet);
+                movement.setDestinationWallet(destinationWallet);
+                movement.setAmount(amount);
+                movement.setTimestamp(String.valueOf(LocalDateTime.now()));
+                movement.setState(MovementState.PENDING);
+                movementRepository.save(movement);
+            }
+        } catch (Exception exception) {
+            log.error("An error occurred while moving the asset  {}", exception.getMessage());
+            throw new GeneralException("An error occurred while moving the asset");
         }
     }
 
@@ -141,7 +160,7 @@ public class AssetMovementService {
             // If the movement completes successfully without exceptions, set state to COMPLETED
             return MovementState.CLEARED;
         } catch (Exception e) {
-            // Log the error or handle it appropriately
+            // Log the error or handle it
             return MovementState.FAILED;
         }
     }
@@ -158,8 +177,8 @@ public class AssetMovementService {
         historicalBalanceDestination.setBalance(destinationWallet.getBalance());
         historicalBalanceDestination.setTimestamp(String.valueOf(LocalDateTime.now()));
         historicalBalanceRepository.save(historicalBalanceDestination);
-        kafkaEventPublisher.publishCommandEvents("ledger-historical-balance-event", entityMapper.toDTO(historicalBalanceSource));
-        kafkaEventPublisher.publishCommandEvents("ledger-historical-balance-event", entityMapper.toDTO(historicalBalanceDestination));
+        kafkaEventPublisher.publishCommandEvents(historicalBalanceEventTopic, entityMapper.toDTO(historicalBalanceSource));
+        kafkaEventPublisher.publishCommandEvents(historicalBalanceEventTopic, entityMapper.toDTO(historicalBalanceDestination));
     }
 
     // Method to update wallet balances

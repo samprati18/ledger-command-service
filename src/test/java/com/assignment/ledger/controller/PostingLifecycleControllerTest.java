@@ -15,7 +15,7 @@ import org.springframework.http.ResponseEntity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
-public class PostingLifecycleControllerTest {
+class PostingLifecycleControllerTest {
 
     @Mock
     private PostingLifecycleService postingLifecycleService;
@@ -24,39 +24,23 @@ public class PostingLifecycleControllerTest {
     private PostingLifecycleController postingLifecycleController;
 
     @BeforeEach
-    public void setUp() {
-        MockitoAnnotations.initMocks(this);
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
-    public void testSetPostingLifecycleState_Success() {
+    void setPostingLifecycleState_ValidInput_ReturnsOk() {
         // Arrange
         PostingLifecycleDTO postingLifecycleDTO = new PostingLifecycleDTO();
         postingLifecycleDTO.setPostingId(1L);
         postingLifecycleDTO.setNewState(MovementState.CLEARED);
-
         // Act
-        ResponseEntity<String> responseEntity = postingLifecycleController.setPostingLifecycleState(postingLifecycleDTO);
+        ResponseEntity<String> response = postingLifecycleController.setPostingLifecycleState(postingLifecycleDTO);
 
         // Assert
-        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
-        assertEquals("Posting lifecycle state updated successfully", responseEntity.getBody());
-        verify(postingLifecycleService, times(1)).setPostingState(1L, MovementState.CLEARED);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Posting lifecycle state updated successfully", response.getBody());
+        verify(postingLifecycleService, times(1)).setPostingState(postingLifecycleDTO.getPostingId(), postingLifecycleDTO.getNewState());
     }
 
-    @Test
-    public void testSetPostingLifecycleState_Failure() {
-        // Arrange
-        PostingLifecycleDTO postingLifecycleDTO = new PostingLifecycleDTO();
-        postingLifecycleDTO.setPostingId(1L);
-        postingLifecycleDTO.setNewState(MovementState.CLEARED);
-        doThrow(new RuntimeException("Error")).when(postingLifecycleService).setPostingState(1L, MovementState.CLEARED);
-
-        // Act
-        ResponseEntity<String> responseEntity = postingLifecycleController.setPostingLifecycleState(postingLifecycleDTO);
-
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, responseEntity.getStatusCode());
-        assertEquals("Error", responseEntity.getBody());
-    }
 }

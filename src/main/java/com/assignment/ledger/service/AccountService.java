@@ -4,15 +4,19 @@ import com.assignment.ledger.entity.AccountState;
 import com.assignment.ledger.entity.command.AccountCommand;
 import com.assignment.ledger.event.KafkaEventPublisher;
 import com.assignment.ledger.exception.AccountNotFoundException;
+import com.assignment.ledger.exception.GeneralException;
 import com.assignment.ledger.mapper.EntityMapper;
 import com.assignment.ledger.repository.AccountRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
  * The AccountService class manages the state changes of accounts and publishes events accordingly.
  */
 @Service
+@Slf4j
 public class AccountService {
     // Repository for accessing accounts
     private final AccountRepository accountRepository;
@@ -21,6 +25,9 @@ public class AccountService {
 
     // Mapper for mapping entity objects to DTOs
     private final EntityMapper entityMapper;
+
+    @Value("${ledger.account.state.change.event.topic}")
+    private String accountStateChangeEventTopic;
 
     /**
      * Constructs an instance of AccountService with the necessary dependencies.
@@ -35,6 +42,7 @@ public class AccountService {
         this.kafkaEventPublisher = kafkaEventPublisher;
         this.entityMapper = entityMapper;
     }
+
     /**
      * Changes the state of an account identified by the given accountNumber.
      * Publishes events after updating the state.
@@ -47,13 +55,18 @@ public class AccountService {
         // Retrieve the account by accountNumber
         AccountCommand accountCommand = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found with id: " + accountNumber));
-        // Update the state of the accountCommand
-        accountCommand.setState(newState);
-        // Save the updated accountCommand
-        accountRepository.save(accountCommand);
-        // Publish event to Kafka
-        kafkaEventPublisher.publishCommandEvents("ledger-account-state-change-event", entityMapper.toDTO(accountCommand));
-        return "Account state has been changed successfully";
+        try {
+            // Update the state of the accountCommand
+            accountCommand.setState(newState);
+            // Save the updated accountCommand
+            accountRepository.save(accountCommand);
+            // Publish event to Kafka
+            kafkaEventPublisher.publishCommandEvents(accountStateChangeEventTopic, entityMapper.toDTO(accountCommand));
+            return "Account state has been changed successfully";
+        } catch (Exception exception) {
+            log.error("An error occurred while changing the  account state  {}", exception.getMessage());
+            throw new GeneralException("An error occurred while changing the  account state");
+        }
     }
 
 }

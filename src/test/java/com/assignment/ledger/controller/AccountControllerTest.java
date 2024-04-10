@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,27 +25,27 @@ class AccountControllerTest {
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
-    void manageAccountLifecycle_ValidDTO_Success() {
+    void manageAccountLifecycle_ValidInput_ReturnsOk() {
         // Arrange
         AccountStateChangeDTO accountStateChangeDTO = new AccountStateChangeDTO();
-        accountStateChangeDTO.setAccountId("123");
+        accountStateChangeDTO.setAccountId("accountId");
         accountStateChangeDTO.setAccountState(AccountState.CLOSED);
 
-        when(accountService.changeAccountState("123", AccountState.OPEN)).thenReturn("Success");
+        when(accountService.changeAccountState(accountStateChangeDTO.getAccountId(), accountStateChangeDTO.getAccountState()))
+                .thenReturn("Account state has been changed successfully");
 
         // Act
-        ResponseEntity<String> responseEntity = accountController.manageAccountLifecycle(accountStateChangeDTO);
+        ResponseEntity<String> response = accountController.manageAccountLifecycle(accountStateChangeDTO);
 
         // Assert
-        assertEquals("Success", responseEntity.getBody());
-        assertEquals(200, responseEntity.getStatusCodeValue());
-
-        // Verify
-        verify(accountService, times(1)).changeAccountState("123", AccountState.OPEN);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Account state has been changed successfully", response.getBody());
+        verify(accountService, times(1)).changeAccountState(accountStateChangeDTO.getAccountId(), accountStateChangeDTO.getAccountState());
     }
+
 
 }

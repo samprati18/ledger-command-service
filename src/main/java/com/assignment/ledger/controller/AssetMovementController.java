@@ -2,7 +2,6 @@ package com.assignment.ledger.controller;
 
 import com.assignment.ledger.dto.AssetMovementRequest;
 import com.assignment.ledger.dto.MultipleAssetMovementRequest;
-import com.assignment.ledger.exception.WalletNotFoundException;
 import com.assignment.ledger.service.AssetMovementService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;

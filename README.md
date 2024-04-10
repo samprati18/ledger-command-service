@@ -87,8 +87,17 @@ To maintain synchronization between the command and view data, Kafka is utilized
 ## Endpoint Descriptions
 
 1. **Manage Account Lifecycle**
-   - **Endpoint**: `/ledger/manageAccountLifecycle/{accountId}?newState=CLOSED` (PUT)
+   - **Endpoint**: `/ledger/manageAccountLifecycle` (PUT)
    - **Description**: This endpoint facilitates clients in altering the lifecycle state of an account. Upon providing the `accountId` and `newState` as parameters, the endpoint updates the account's state in the database. Asynchronous event publication to the Kafka topic "ledger-account-state-change" ensures timely synchronization with the query table "account_view", enabling clients to access the most up-to-date account information.
+   - **Example curl command**:
+   ```bash
+   curl --location --request PUT 'http://localhost:8080/ledger/manageAccountLifecycle' \
+   --header 'Content-Type: application/json' \
+   --data '{
+       "accountId":"12345678",
+       "accountState":"OPEN"
+   }'
+   ```
 
 2. **Move Asset from One Wallet to Another**
    - **Endpoint**: `/ledger/moveAsset` (POST)
@@ -99,14 +108,52 @@ To maintain synchronization between the command and view data, Kafka is utilized
        Subsequently, Kafka events are published to synchronize movement records with the query table "movement_view", source and destination wallet records with the "wallet_view" table, and historical balance records with the "HistoricalBalanceView" table.
 
 		Furthermore, wallet balance and movement changes are broadcasted to clients using the ApplicationEventPublisher from the Spring Boot library. The broadcast events, namely BalanceChangeEvent and AssetMovementChange, are assumed to be picked up by consumers and sent to the UI using websockets for real-time updates.
+   - **Example curl command**:
+   ```bash
+   curl --location --request POST 'http://localhost:8080/ledger/moveAsset' \
+   --header 'Content-Type: application/json' \
+   --data '{
+       "sourceWalletId": 1,
+       "destinationWalletId": 2,
+       "amount": 100.0
+   }'
+   ```
 
 3. **Move Multiple Assets**
    - **Endpoint**: `/ledger/moveMultipleAssets` (POST)
    - **Description**: Allows clients to move multiple assets between wallets in a single request. Clients provide a list of `assetMovementRequest` objects in the request body, each containing `sourceWalletId`, `destinationWalletId`, and `amount`. The endpoint processes the asset movements using parallel stream operations.
+   - **Example Curl Command**:
+   ```bash
+   curl --location --request POST 'http://localhost:8080/ledger/moveMultipleAssets' \
+   --header 'Content-Type: application/json' \
+   --data '{
+     "assetMovementRequest": [
+       {
+         "sourceWalletId": 1,
+         "destinationWalletId": 2,
+         "amount": 100.0
+       },
+       {
+         "sourceWalletId": 3,
+         "destinationWalletId": 4,
+         "amount": 200.0
+       }
+     ]
+   }'
+   ```
 
 4. **Manage Lifecycle of Postings**
-   - **Endpoint**: `/ledger/{postingId}/setState?newState=CLEARED` (PUT)
+   - **Endpoint**: `/ledger/setState` (PUT)
    - **Description**: Enables clients to change the state of a posting. Clients provide the `postingId` or `movementStateId` and `newState` as parameters. The endpoint validates the ID's availability, updates the state in the database, broadcasts movement changes, and publishes Kafka events to keep asset movement changes in sync with the "movement_view" table.
+   - **Example curl command**:
+  ```bash
+  curl --location --request PUT 'http://localhost:8080/ledger/setState' \
+  --header 'Content-Type: application/json' \
+  --data '{
+      "postingId":1,
+      "newState":"CLEARED"
+  }'
+  ```
 
 ## How to Run
 
@@ -119,4 +166,6 @@ To maintain synchronization between the command and view data, Kafka is utilized
 ## Assumptions
 
 - For broadcasting balance change events and asset movement changes, `ApplicationEventPublisher` from the Spring Boot library is used to broadcast the `BalanceChangeEvent` and `AssetMovementChangeEvent`. It is assumed that the consumer of these events will pick up the event and send it to the UI using WebSocket.
+- With the help of Dockerfile and Kubernetes deployment file (ledger-command-service-deployment.yaml), the Ledger Command Service can be deployed in a Kubernetes cluster. The Dockerfile is used to build a Docker image containing the service, while the Kubernetes deployment file is used to define how the service should be deployed and managed within the Kubernetes environment.
+- Development of the Ledger Command Service was performed on a local machine where Kafka was installed and configured. Hence, it is assumed that Kafka is installed and available on the server where this service will be tested. The Ledger Command Service relies on Kafka for asynchronous event publication, and hence Kafka must be set up and properly configured for testing purposes.
 

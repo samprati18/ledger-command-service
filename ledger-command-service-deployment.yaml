@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-command-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger-command-service
+  template:
+    metadata:
+      labels:
+        app: ledger-command-service
+    spec:
+      containers:
+        - name: ledger-command-service
+          image: docker.io/ledger-command-service:latest
+          ports:
+            - containerPort: 8080

@@ -2,6 +2,7 @@ package com.assignment.ledger.exception.handler;
 
 import com.assignment.ledger.exception.AccountNotFoundException;
 import com.assignment.ledger.exception.AssetMovementFailedException;
+import com.assignment.ledger.exception.GeneralException;
 import com.assignment.ledger.exception.WalletNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +40,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccountNotFoundException.class)
     public ResponseEntity<String> handleAccountNotFoundException(AssetMovementFailedException ex) {
+        return new ResponseEntity<>(ex.getMessage(), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(GeneralException.class)
+    public ResponseEntity<String> handleGeneralException(GeneralException ex) {
         return new ResponseEntity<>(ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 

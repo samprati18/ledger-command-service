@@ -11,16 +11,10 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-public class AssetMovementControllerTest {
+class AssetMovementControllerTest {
 
     @Mock
     private AssetMovementService assetMovementService;
@@ -34,70 +28,34 @@ public class AssetMovementControllerTest {
     }
 
     @Test
-    void moveAssets_ValidRequest_ShouldReturnOk() {
+    void moveAssets_ValidInput_ReturnsOk() {
         // Arrange
-        AssetMovementRequest assetMovementRequest = new AssetMovementRequest(123L, 456L, 100);
-        doNothing().when(assetMovementService).moveAssets(assetMovementRequest.getSourceWalletId(), assetMovementRequest.getDestinationWalletId(), assetMovementRequest.getAmount());
+        AssetMovementRequest assetMovementRequest = new AssetMovementRequest();
+        assetMovementRequest.setSourceWalletId(1L);
+        assetMovementRequest.setDestinationWalletId(2L);
+        assetMovementRequest.setAmount(100.00);
 
         // Act
-        ResponseEntity<String> responseEntity = assetMovementController.moveAssets(assetMovementRequest);
+        ResponseEntity<String> response = assetMovementController.moveAssets(assetMovementRequest);
 
         // Assert
-        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
-        assertEquals("Assets moved successfully", responseEntity.getBody());
-        verify(assetMovementService).moveAssets(assetMovementRequest.getSourceWalletId(), assetMovementRequest.getDestinationWalletId(), assetMovementRequest.getAmount());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Assets moved successfully", response.getBody());
+        verify(assetMovementService, times(1)).moveAssets(assetMovementRequest.getSourceWalletId(), assetMovementRequest.getDestinationWalletId(), assetMovementRequest.getAmount());
     }
 
     @Test
-    void moveAssets_ExceptionThrown_ShouldReturnBadRequest() {
+    void moveMultipleAssets_ValidInput_ReturnsOk() {
         // Arrange
-        AssetMovementRequest assetMovementRequest = new AssetMovementRequest(123L, 456L, 100);
-        String errorMessage = "Invalid request";
-        doThrow(new RuntimeException(errorMessage)).when(assetMovementService).moveAssets(assetMovementRequest.getSourceWalletId(), assetMovementRequest.getDestinationWalletId(), assetMovementRequest.getAmount());
+        MultipleAssetMovementRequest multipleAssetMovementRequest = new MultipleAssetMovementRequest();
 
         // Act
-        ResponseEntity<String> responseEntity = assetMovementController.moveAssets(assetMovementRequest);
+        ResponseEntity<String> response = assetMovementController.moveMultipleAssets(multipleAssetMovementRequest);
 
         // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, responseEntity.getStatusCode());
-        assertEquals(errorMessage, responseEntity.getBody());
-        verify(assetMovementService).moveAssets(assetMovementRequest.getSourceWalletId(), assetMovementRequest.getDestinationWalletId(), assetMovementRequest.getAmount());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Multiple Assets moved successfully", response.getBody());
+        verify(assetMovementService, times(1)).moveMultipleAssets(multipleAssetMovementRequest);
     }
 
-    @Test
-    void moveMultipleAssets_ValidRequest_ShouldReturnOk() {
-        // Arrange
-        List<AssetMovementRequest> assetMovements = new ArrayList<>();
-        assetMovements.add(new AssetMovementRequest(123L, 456L, 100));
-        assetMovements.add(new AssetMovementRequest(789L, 1011L, 200));
-        MultipleAssetMovementRequest request = new MultipleAssetMovementRequest(assetMovements);
-        doNothing().when(assetMovementService).moveMultipleAssets(request);
-
-        // Act
-        ResponseEntity<String> responseEntity = assetMovementController.moveMultipleAssets(request);
-
-        // Assert
-        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
-        assertEquals("Multiple Assets moved successfully", responseEntity.getBody());
-        verify(assetMovementService).moveMultipleAssets(request);
-    }
-
-    @Test
-    void moveMultipleAssets_ExceptionThrown_ShouldReturnBadRequest() {
-        // Arrange
-        List<AssetMovementRequest> assetMovements = new ArrayList<>();
-        assetMovements.add(new AssetMovementRequest(123L, 456L, 100));
-        assetMovements.add(new AssetMovementRequest(789L, 1011L, 200));
-        MultipleAssetMovementRequest request = new MultipleAssetMovementRequest(assetMovements);
-        String errorMessage = "Invalid request";
-        doThrow(new RuntimeException(errorMessage)).when(assetMovementService).moveMultipleAssets(request);
-
-        // Act
-        ResponseEntity<String> responseEntity = assetMovementController.moveMultipleAssets(request);
-
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, responseEntity.getStatusCode());
-        assertEquals(errorMessage, responseEntity.getBody());
-        verify(assetMovementService).moveMultipleAssets(request);
-    }
 }

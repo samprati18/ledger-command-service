@@ -1,19 +1,24 @@
 package com.assignment.ledger.service;
 
+
 import com.assignment.ledger.entity.AccountState;
 import com.assignment.ledger.entity.command.AccountCommand;
-import com.assignment.ledger.entity.command.EntityCommand;
 import com.assignment.ledger.event.KafkaEventPublisher;
+import com.assignment.ledger.exception.AccountNotFoundException;
+import com.assignment.ledger.exception.GeneralException;
+import com.assignment.ledger.mapper.EntityMapper;
 import com.assignment.ledger.repository.AccountRepository;
-import org.junit.Assert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 class AccountServiceTest {
@@ -24,47 +29,62 @@ class AccountServiceTest {
     @Mock
     private KafkaEventPublisher kafkaEventPublisher;
 
+    @Mock
+    private EntityMapper entityMapper;
+
     @InjectMocks
     private AccountService accountService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        ReflectionTestUtils.setField(accountService, "accountStateChangeEventTopic", "ledger-account-state-change-event");
     }
 
     @Test
-    void changeAccountState_AccountFound_ShouldChangeStateAndPublishEvent() {
-        // Arrange
-        String accountNumber = "123";
+    void testChangeAccountState_Success() {
+        String accountNumber = "12345";
         AccountState newState = AccountState.OPEN;
-        AccountCommand account = new AccountCommand(1L, accountNumber, new EntityCommand(),"Account 1",AccountState.CLOSED);
-        when(accountRepository.findByAccountNumber(accountNumber)).thenReturn(Optional.of(account));
 
-        // Act
-        accountService.changeAccountState(accountNumber, newState);
+        AccountCommand accountCommand = new AccountCommand();
+        accountCommand.setAccountNumber(accountNumber);
 
-        // Assert
-        verify(accountRepository).findByAccountNumber(accountNumber);
-        Assert.assertEquals(newState, account.getState());
-        verify(accountRepository).save(account);
-        verify(kafkaEventPublisher).publishCommandEvents(eq("ledger-account-state-change"), any(AccountCommand.class));
+        when(accountRepository.findByAccountNumber(accountNumber)).thenReturn(Optional.of(accountCommand));
+
+        String result = accountService.changeAccountState(accountNumber, newState);
+
+        assertEquals("Account state has been changed successfully", result);
+        assertEquals(newState, accountCommand.getState());
+        verify(accountRepository, times(1)).save(accountCommand);
+        verify(kafkaEventPublisher, times(1)).publishCommandEvents(anyString(), any());
     }
 
     @Test
-    void changeAccountState_AccountNotFound_ShouldThrowException() {
-        // Arrange
-        String accountNumber = "123";
+    void testChangeAccountState_AccountNotFound() {
+        String accountNumber = "12345";
         AccountState newState = AccountState.OPEN;
+
         when(accountRepository.findByAccountNumber(accountNumber)).thenReturn(Optional.empty());
 
-        // Act & Assert
-        Assert.assertThrows(IllegalArgumentException.class, () -> {
-            accountService.changeAccountState(accountNumber, newState);
-        });
-
-        // Verify
-        verify(accountRepository).findByAccountNumber(accountNumber);
-        verify(accountRepository, never()).save(any(AccountCommand.class));
-        verify(kafkaEventPublisher, never()).publishCommandEvents(anyString(), any(AccountCommand.class));
+        assertThrows(AccountNotFoundException.class, () -> accountService.changeAccountState(accountNumber, newState));
+        verify(accountRepository, never()).save(any());
+        verify(kafkaEventPublisher, never()).publishCommandEvents(anyString(), any());
     }
+
+    @Test
+    void testChangeAccountState_ExceptionThrown() {
+        String accountNumber = "12345";
+        AccountState newState = AccountState.OPEN;
+
+        AccountCommand accountCommand = new AccountCommand();
+        accountCommand.setAccountNumber(accountNumber);
+
+        when(accountRepository.findByAccountNumber(accountNumber)).thenReturn(Optional.of(accountCommand));
+        doThrow(new RuntimeException("Test exception")).when(accountRepository).save(accountCommand);
+
+        assertThrows(GeneralException.class, () -> accountService.changeAccountState(accountNumber, newState));
+        verify(accountRepository, times(1)).save(accountCommand);
+        verify(kafkaEventPublisher, never()).publishCommandEvents(anyString(), any());
+    }
+
 }

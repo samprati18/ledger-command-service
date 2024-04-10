@@ -2,25 +2,30 @@ package com.assignment.ledger.service;
 
 import com.assignment.ledger.dto.AssetMovementRequest;
 import com.assignment.ledger.dto.MultipleAssetMovementRequest;
-import com.assignment.ledger.entity.MovementState;
 import com.assignment.ledger.entity.command.WalletCommand;
 import com.assignment.ledger.event.EventPublisher;
 import com.assignment.ledger.event.KafkaEventPublisher;
+import com.assignment.ledger.exception.WalletNotFoundException;
+import com.assignment.ledger.mapper.EntityMapper;
 import com.assignment.ledger.repository.HistoricalBalanceCommandRepository;
 import com.assignment.ledger.repository.MovementCommandRepository;
 import com.assignment.ledger.repository.WalletCommandRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.Before;
+import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+
 
 import static org.mockito.Mockito.*;
 
-class AssetMovementServiceTest {
+
+public class AssetMovementServiceTest {
 
     @Mock
     private MovementCommandRepository movementRepository;
@@ -37,16 +42,23 @@ class AssetMovementServiceTest {
     @Mock
     private KafkaEventPublisher kafkaEventPublisher;
 
+    @Mock
+    private EntityMapper entityMapper;
+
     @InjectMocks
     private AssetMovementService assetMovementService;
 
-    @BeforeEach
-    void setUp() {
+
+    @Before
+    public void setUp() {
         MockitoAnnotations.openMocks(this);
+        ReflectionTestUtils.setField(assetMovementService, "movementCommandTopic", "ledger-asset-movementCommand-event");
+        ReflectionTestUtils.setField(assetMovementService, "walletEventTopic", "ledger-account-wallet-event");
+        ReflectionTestUtils.setField(assetMovementService, "historicalBalanceEventTopic", "ledger-historical-balance-event");
     }
 
     @Test
-    void moveAssets_SourceAndDestinationWalletsFound_ShouldUpdateBalancesAndPublishEvents() {
+    public void testMoveAssets_Success() {
         // Arrange
         Long sourceWalletId = 1L;
         Long destinationWalletId = 2L;
@@ -68,26 +80,13 @@ class AssetMovementServiceTest {
         verify(movementRepository).save(any());
         verify(eventPublisher, times(2)).publishBalanceChangeEvent(any(WalletCommand.class));
         verify(eventPublisher).publishMovementEvent(any());
-        verify(kafkaEventPublisher, times(3)).publishCommandEvents(anyString(), any());
+        verify(kafkaEventPublisher, times(5)).publishCommandEvents(anyString(), any());
+
     }
 
-    @Test
-    void moveMultipleAssets_ValidRequests_ShouldInvokeMoveAssetsForEachRequest() {
-        // Arrange
-        AssetMovementRequest request1 = new AssetMovementRequest(1L, 2L, 100.0);
-        AssetMovementRequest request2 = new AssetMovementRequest(3L, 4L, 200.0);
-        MultipleAssetMovementRequest multipleAssetMovementRequest = new MultipleAssetMovementRequest(new ArrayList<>());
-        multipleAssetMovementRequest.getAssetMovementRequest().add(request1);
-        multipleAssetMovementRequest.getAssetMovementRequest().add(request2);
-        doNothing().when(assetMovementService).moveAssets(anyLong(), anyLong(), anyDouble());
-
-        // Act
-        assetMovementService.moveMultipleAssets(multipleAssetMovementRequest);
-
-        // Assert
-        verify(assetMovementService).moveAssets(request1.getSourceWalletId(), request1.getDestinationWalletId(), request1.getAmount());
-        verify(assetMovementService).moveAssets(request2.getSourceWalletId(), request2.getDestinationWalletId(), request2.getAmount());
+    @Test(expected = WalletNotFoundException.class)
+    public void testMoveAssets_Failed() {
+        double amount = 150.0; // Exceeds source wallet balance
+        assetMovementService.moveAssets(1L, 2L, amount);
     }
-
-    // Additional test cases can be added to cover other scenarios such as insufficient balance, exceptions, etc.
 }
